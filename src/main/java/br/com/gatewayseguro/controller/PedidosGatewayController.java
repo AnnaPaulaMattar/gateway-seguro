@@ -16,9 +16,10 @@ public class PedidosGatewayController {
     private final RestClient restClient;
 
     public PedidosGatewayController(
-            @Value("${app.pedidos.url}") String urlPedidos) {
+            @Value("${app.pedidos.url}") String urlPedidos,
+            RestClient.Builder restClientBuilder) {
 
-        this.restClient = RestClient.builder()
+        this.restClient = restClientBuilder
                 .baseUrl(urlPedidos)
                 .build();
     }
