@@ -193,9 +193,10 @@ em ambiente local e não constituem uma auditoria
 de segurança ou certificação para produção.
 
 
+
 ## Testes automatizados
 
-O projeto possui 9 testes automatizados desenvolvidos
+O projeto possui 11 testes automatizados desenvolvidos
 com JUnit 5, Spring Boot Test, MockMvc e
 MockRestServiceServer.
 
@@ -210,24 +211,29 @@ Os testes verificam:
 - Acesso ao endpoint de pedidos sem permissão USER: HTTP 403.
 - Comunicação autenticada com o microsserviço simulado: HTTP 200.
 - Tratamento de falha do microsserviço: HTTP 502.
+- Tratamento global de exceções: HTTP 500, sem exposição
+  de detalhes internos.
+- Rejeição de JWT malformado: HTTP 401, com resposta
+  JSON padronizada.
 
 ### Execução dos testes
 
-No terminal, na raiz do projeto:
+No terminal PowerShell, na raiz do projeto:
 
-```powershell
-.\mvnw.cmd test
-```
+    .\mvnw.cmd test
 
 ### Resultado da validação
 
-Tests run: 9, Failures: 0, Errors: 0, Skipped: 0
-
-BUILD SUCCESS
+    Tests run: 11, Failures: 0, Errors: 0, Skipped: 0
+    BUILD SUCCESS
 
 Os testes automatizados utilizam respostas HTTP
-simuladas e não dependem da execução do
-microsserviço de pedidos.
+simuladas para o microsserviço de pedidos e não
+dependem de sua execução.
+
+Os cenários de JWT expirado e assinatura RSA adulterada
+também foram validados manualmente, utilizando tokens
+assinados e requisições HTTPS reais ao Gateway.
 
 
 ## Execução do Gateway Seguro
@@ -296,3 +302,153 @@ disponível em http://127.0.0.1:8081.
 O arquivo .jar não contém a chave privada TLS nem
 a senha do certificado. Esses elementos devem ser
 configurados separadamente no ambiente de execução.
+
+
+## Exemplos de testes de segurança com curl
+
+Os exemplos abaixo foram preparados para o PowerShell
+no Windows, com o Gateway em execução na porta 8443.
+
+A opção -k permite utilizar o certificado HTTPS
+autoassinado apenas no ambiente de desenvolvimento.
+
+### 1. Endpoint público sem JWT
+
+    curl.exe -k -i https://localhost:8443/api/status
+
+Resultado esperado: HTTP 200.
+
+### 2. Endpoint privado sem JWT
+
+    curl.exe -k -i https://localhost:8443/api/privado
+
+Resultado esperado: HTTP 401.
+
+### 3. Endpoint privado com JWT válido
+
+Primeiro, gere um JWT válido com o projeto jwt-testes.
+
+No PowerShell:
+
+    $token = Read-Host "Cole o JWT valido"
+
+Em seguida:
+
+    curl.exe -k -i -H "Authorization: Bearer $token" https://localhost:8443/api/privado
+
+Resultado esperado: HTTP 200.
+
+### 4. Endpoint privado com JWT inválido
+
+    curl.exe -k -i -H "Authorization: Bearer token.invalido.assinatura" https://localhost:8443/api/privado
+
+Resultado esperado: HTTP 401.
+
+Resposta JSON:
+
+    {"erro":"NAO_AUTENTICADO","mensagem":"Token JWT ausente ou invalido"}
+
+### 5. JWT expirado
+
+No projeto jwt-testes, gere temporariamente um JWT
+com a data de expiração no passado.
+
+Armazene o token:
+
+    $tokenExpirado = Read-Host "Cole o JWT expirado"
+
+Execute:
+
+    curl.exe -k -i -H "Authorization: Bearer $tokenExpirado" https://localhost:8443/api/privado
+
+Resultado esperado: HTTP 401.
+
+Após o teste, restaure a validade original do gerador.
+
+### 6. JWT com assinatura RSA adulterada
+
+Utilize um JWT válido armazenado na variável $token.
+
+No PowerShell:
+
+    $partes = $token.Split('.')
+    $assinatura = $partes[2]
+    $primeiro = $assinatura.Substring(0, 1)
+    $novoPrimeiro = if ($primeiro -eq 'A') { 'B' } else { 'A' }
+    $partes[2] = $novoPrimeiro + $assinatura.Substring(1)
+    $tokenAdulterado = $partes -join '.'
+
+Execute:
+
+    curl.exe -k -i -H "Authorization: Bearer $tokenAdulterado" https://localhost:8443/api/privado
+
+Resultado esperado: HTTP 401.
+
+O token original, sem alterações, deve retornar HTTP 200.
+
+### 7. Autorização RBAC
+
+Gere um JWT válido contendo a permissão GUEST,
+sem a permissão USER.
+
+    $tokenGuest = Read-Host "Cole o JWT com permissao GUEST"
+
+Execute:
+
+    curl.exe -k -i -H "Authorization: Bearer $tokenGuest" https://localhost:8443/api/privado
+
+Resultado esperado: HTTP 403.
+
+### 8. Consulta de pedidos pelo Gateway
+
+Com o microsserviço de pedidos em execução:
+
+    curl.exe -k -i -H "Authorization: Bearer $token" https://localhost:8443/api/pedidos
+
+Resultado esperado: HTTP 200.
+
+### 9. Rate Limiting por IP
+
+Em um terminal PowerShell, execute:
+
+    1..35 | ForEach-Object {
+        curl.exe -k -s -o NUL -w "%{http_code}`n" https://localhost:8443/api/status
+    }
+
+O limite configurado é de 30 requisições por IP
+em uma janela de 60 segundos.
+
+Ao ultrapassar o limite, o Gateway deve retornar
+HTTP 429.
+
+A contagem depende das requisições já realizadas
+dentro da janela atual.
+
+### 10. Rate Limiting por usuário
+
+Com um JWT válido:
+
+    1..25 | ForEach-Object {
+        curl.exe -k -s -o NUL -w "%{http_code}`n" -H "Authorization: Bearer $token" https://localhost:8443/api/privado
+    }
+
+O limite configurado é de 20 requisições por usuário
+em uma janela de 60 segundos.
+
+Ao ultrapassar o limite, o Gateway deve retornar
+HTTP 429.
+
+O limite por IP também continua sendo aplicado.
+
+### Observações
+
+Os tokens JWT e as senhas não devem ser publicados
+no repositório.
+
+Os testes de Rate Limiting devem ser realizados
+considerando os contadores da janela atual.
+
+O mecanismo de Rate Limiting utiliza memória local,
+sendo adequado ao protótipo acadêmico, mas não
+substitui uma solução distribuída para produção.
+

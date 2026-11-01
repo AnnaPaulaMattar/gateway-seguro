@@ -35,6 +35,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 
 import org.junit.jupiter.api.BeforeEach;
+import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 
 
 
@@ -199,6 +200,61 @@ class GatewaySeguroApplicationTests {
                     """));
 
 		mockRestServiceServer.verify();
+	}
+
+
+	@Test
+	void erroInesperadoDeveRetornar500SemExporDetalhesInternos() throws Exception {
+
+		mockRestServiceServer
+				.expect(requestTo("http://localhost:8081/api/pedidos"))
+				.andRespond(request -> {
+					throw new IllegalStateException(
+							"Detalhe interno confidencial do servidor"
+					);
+				});
+
+		mockMvc.perform(get("/api/pedidos")
+						.with(jwt()
+								.jwt(token -> token.subject("usuario-teste"))
+								.authorities(
+										new SimpleGrantedAuthority("ROLE_USER")
+								)))
+				.andExpect(status().isInternalServerError())
+				.andExpect(content().json("""
+                    {
+                      "erro": "ERRO_INTERNO",
+                      "mensagem": "Nao foi possivel processar a requisicao"
+                    }
+                    """))
+				.andExpect(result -> {
+					String resposta = result.getResponse().getContentAsString();
+
+					org.junit.jupiter.api.Assertions.assertFalse(
+							resposta.contains("Detalhe interno confidencial")
+					);
+				});
+
+		mockRestServiceServer.verify();
+	}
+
+
+
+
+	@Test
+	void endpointPrivadoDeveRetornar401ComJwtInvalido() throws Exception {
+
+		mockMvc.perform(get("/api/privado")
+						.header("Authorization", "Bearer token.invalido.assinatura"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(content().contentTypeCompatibleWith(
+						"application/json"))
+				.andExpect(content().json("""
+                    {
+                      "erro": "NAO_AUTENTICADO",
+                      "mensagem": "Token JWT ausente ou invalido"
+                    }
+                    """));
 	}
 
 

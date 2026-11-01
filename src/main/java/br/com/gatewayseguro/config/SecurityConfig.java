@@ -79,12 +79,22 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
 
+
                 .oauth2ResourceServer(oauth2 -> oauth2
+                        .authenticationEntryPoint((request, response, exception) -> {
+                            response.setStatus(401);
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.getWriter().write(
+                                    "{\"erro\":\"NAO_AUTENTICADO\"," +
+                                            "\"mensagem\":\"Token JWT ausente ou invalido\"}"
+                            );
+                        })
                         .jwt(jwt -> jwt
                                 .jwtAuthenticationConverter(
                                         jwtAuthenticationConverter()
                                 ))
                 );
+
         http.addFilterAfter(
                 rateLimitFilter,
                 BearerTokenAuthenticationFilter.class
