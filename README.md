@@ -192,3 +192,107 @@ Os resultados representam validações funcionais
 em ambiente local e não constituem uma auditoria
 de segurança ou certificação para produção.
 
+
+## Testes automatizados
+
+O projeto possui 9 testes automatizados desenvolvidos
+com JUnit 5, Spring Boot Test, MockMvc e
+MockRestServiceServer.
+
+Os testes verificam:
+
+- Inicialização do contexto Spring Boot.
+- Acesso público sem JWT: HTTP 200.
+- Acesso privado sem JWT: HTTP 401.
+- Acesso privado sem a permissão USER: HTTP 403.
+- Acesso privado com a permissão USER: HTTP 200.
+- Acesso ao endpoint de pedidos sem JWT: HTTP 401.
+- Acesso ao endpoint de pedidos sem permissão USER: HTTP 403.
+- Comunicação autenticada com o microsserviço simulado: HTTP 200.
+- Tratamento de falha do microsserviço: HTTP 502.
+
+### Execução dos testes
+
+No terminal, na raiz do projeto:
+
+```powershell
+.\mvnw.cmd test
+```
+
+### Resultado da validação
+
+Tests run: 9, Failures: 0, Errors: 0, Skipped: 0
+
+BUILD SUCCESS
+
+Os testes automatizados utilizam respostas HTTP
+simuladas e não dependem da execução do
+microsserviço de pedidos.
+
+
+## Execução do Gateway Seguro
+
+### Pré-requisitos
+
+- Java 17 ou superior, compatível com a versão do projeto.
+- Certificado HTTPS local em formato PKCS12.
+- Variável de ambiente GATEWAY_SSL_PASSWORD configurada.
+- Microsserviço de pedidos em execução na porta 8081,
+  para consultas reais de pedidos.
+
+### Gerar o executável
+
+No PowerShell, na raiz do projeto:
+
+```powershell
+.\mvnw.cmd clean package
+```
+
+### Executar o Gateway
+
+Na mesma sessão do PowerShell, configure a senha do
+certificado HTTPS, sem registrá-la no código:
+
+```powershell
+$env:GATEWAY_SSL_PASSWORD = Read-Host "Senha do certificado HTTPS"
+```
+
+Em seguida, execute:
+
+```powershell
+java -jar .\target\gateway-seguro-0.0.1-SNAPSHOT.jar
+```
+
+O Gateway ficará disponível em:
+
+https://localhost:8443
+
+### Verificar o funcionamento
+
+Em outro terminal PowerShell:
+
+```powershell
+curl.exe -k -i https://localhost:8443/api/status
+```
+
+Resultado esperado: HTTP 200.
+
+A opção -k é utilizada somente no ambiente local,
+devido ao certificado HTTPS autoassinado.
+
+Em produção, deve ser utilizado um certificado
+confiável e a validação TLS não deve ser desabilitada.
+
+### Observações
+
+O endpoint /api/status é público.
+
+Os endpoints /api/privado e /api/pedidos exigem
+um JWT válido com a permissão USER.
+
+A consulta real de pedidos depende do microsserviço
+disponível em http://127.0.0.1:8081.
+
+O arquivo .jar não contém a chave privada TLS nem
+a senha do certificado. Esses elementos devem ser
+configurados separadamente no ambiente de execução.
