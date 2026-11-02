@@ -38,6 +38,17 @@ import org.junit.jupiter.api.BeforeEach;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 
 
+import br.com.gatewayseguro.ratelimit.RateLimitFilter;
+import br.com.gatewayseguro.ratelimit.RateLimitService;
+
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+
+
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -148,6 +159,15 @@ class GatewaySeguroApplicationTests {
 				.expect(requestTo("http://localhost:8081/api/pedidos"))
 				.andExpect(method(HttpMethod.GET))
 				.andExpect(header("X-Gateway-Authenticated", "true"))
+				.andExpect(request -> {
+					String tokenInterno = request.getHeaders()
+							.getFirst("X-Gateway-Token");
+
+					org.junit.jupiter.api.Assertions.assertNotNull(tokenInterno);
+					org.junit.jupiter.api.Assertions.assertTrue(
+							tokenInterno.matches("\\d+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+")
+					);
+				})
 				.andRespond(withSuccess(
 						"""
                         [
@@ -255,6 +275,61 @@ class GatewaySeguroApplicationTests {
                       "mensagem": "Token JWT ausente ou invalido"
                     }
                     """));
+	}
+
+
+	@Test
+	void excessoDeRequisicoesDeveRetornar429() throws Exception {
+
+		RateLimitService service =
+				new RateLimitService(2, 20, 60);
+
+		RateLimitFilter filter = new RateLimitFilter(service);
+
+		MockHttpServletRequest request =
+				new MockHttpServletRequest("GET", "/api/status");
+
+		request.setRemoteAddr("192.168.50.10");
+
+		MockHttpServletResponse primeira =
+				new MockHttpServletResponse();
+
+		filter.doFilter(
+				request,
+				primeira,
+				(req, res) -> {}
+		);
+
+		assertEquals(200, primeira.getStatus());
+
+		MockHttpServletResponse segunda =
+				new MockHttpServletResponse();
+
+		filter.doFilter(
+				request,
+				segunda,
+				(req, res) -> {}
+		);
+
+		assertEquals(200, segunda.getStatus());
+
+		MockHttpServletResponse terceira =
+				new MockHttpServletResponse();
+
+		filter.doFilter(
+				request,
+				terceira,
+				(req, res) -> {}
+		);
+
+		assertEquals(429, terceira.getStatus());
+		assertTrue(
+				terceira.getContentType().startsWith("application/json")
+		);
+		assertTrue(
+				terceira.getContentAsString()
+						.contains("LIMITE_EXCEDIDO")
+		);
 	}
 
 

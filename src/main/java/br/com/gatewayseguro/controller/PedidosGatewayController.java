@@ -1,6 +1,7 @@
 
 package br.com.gatewayseguro.controller;
 
+import br.com.gatewayseguro.security.GatewayTokenSigner;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -14,23 +15,31 @@ import org.springframework.web.client.RestClientException;
 public class PedidosGatewayController {
 
     private final RestClient restClient;
+    private final GatewayTokenSigner tokenSigner;
 
     public PedidosGatewayController(
             @Value("${app.pedidos.url}") String urlPedidos,
-            RestClient.Builder restClientBuilder) {
+            RestClient.Builder restClientBuilder,
+            GatewayTokenSigner tokenSigner) {
 
         this.restClient = restClientBuilder
                 .baseUrl(urlPedidos)
                 .build();
+
+        this.tokenSigner = tokenSigner;
     }
 
     @GetMapping("/api/pedidos")
     public ResponseEntity<String> listarPedidos() {
 
         try {
+            String tokenInterno = tokenSigner.gerarToken(
+                    "GET", "/api/pedidos");
+
             String resposta = restClient.get()
                     .uri("/api/pedidos")
                     .header("X-Gateway-Authenticated", "true")
+                    .header("X-Gateway-Token", tokenInterno)
                     .retrieve()
                     .body(String.class);
 
